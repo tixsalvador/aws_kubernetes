@@ -1,0 +1,4 @@
+--- # MASTER PLAYBOOK
+
+- include: playbooks/create_multiple_ec2.yml
+- include: playbooks/install_packages.yml

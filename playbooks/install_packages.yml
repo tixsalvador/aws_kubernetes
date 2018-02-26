@@ -1,0 +1,108 @@
+--- # Install Kubernetes and Docker 
+
+- hosts: aws
+  remote_user: "{{ aws_user }}"
+  become: yes
+  vars_files:
+  - files/awscreds.yml
+  handlers:
+    - name: restart docker
+      service: 
+        name: docker
+        state: restarted
+      listen: "restart docker"
+
+    - name: modify kernel with new network traffic config
+      shell: sysctl --system
+      listen: "run sysctl"
+
+  tasks:
+
+  - name: set linux to permissive mode
+    selinux:
+      policy: targeted
+      state: permissive
+  
+  - name: remove centos default docker installation
+    yum: pkg={{ item }} state=removed
+    with_items:
+      - docker
+      - docker-common
+      - docker-engine
+      - docker-engine-selinux
+
+  - name: add docker repo
+    get_url:
+      url: https://download.docker.com/linux/centos/docker-ce.repo
+      dest: /etc/yum.repos.d/ 
+      mode: 0644
+
+  - name: add kubernetes repo
+    template:
+      src: files/kubernetes.repo.j2
+      dest: /etc/yum.repos.d/kubernetes.repo
+      owner: root
+      group: root
+      mode: 0644
+
+  - name: run make cache due to error on gpgcheck when adding kubernetes repo
+    command: yum -q makecache -y --disablerepo=* --enablerepo=kubernetes
+
+  - name: install addtional packages
+    yum: pkg={{ item }} state=present update_cache=yes
+    with_items:
+      - epel-release
+      - yum-utils
+      - device-mapper-persistent-data 
+      - lvm2
+
+  - name: install docker-ce
+    yum: pkg=docker-ce state=present update_cache=yes
+  
+  - name: create docker group
+    group:
+      name: docker 
+      state: present
+
+  - name: add docker user to docker group
+    user:
+      name: "{{ aws_user }}"
+      append: yes
+      groups: docker
+
+  - name: start/enable docker
+    service:
+      name: docker
+      state: started
+      enabled: yes
+
+  - name: add docker extra-args for kubelet
+    template:
+      src: files/daemon.json.j2
+      dest: /etc/docker/daemon.json
+      owner: root
+      group: root
+      mode: 0644
+    notify: "restart docker"
+
+  - name: install kubernetes packages
+    yum: pkg={{ item }} state=present update_cache=yes
+    with_items:
+      - kubelet
+      - kubeadm
+      - kubectl
+
+  - name: start/enable kubernetes packages
+    service:
+      name: kubelet
+      state: started
+      enabled: yes
+
+  - name: fix issue on network traffic
+    template:
+      src: files/k8s.conf.j2
+      dest: /etc/sysctl.d/k8s.conf
+      owner: root
+      group: root
+      mode: 0644
+    notify: "run sysctl"

@@ -1,0 +1,40 @@
+# AWS EC2 instance
+---
+- hosts: localhost
+  connection: local
+  remote_user: vagrant
+  become: yes
+  gather_facts: false
+  vars:
+    instance_state: running
+  vars_files:
+  - files/awscreds.yml
+  tasks:
+  - name: gathering remote facts
+    ec2_remote_facts:
+      aws_access_key: "{{ aws_id }}"
+      aws_secret_key:  "{{ aws_key }}" 
+      region: "{{aws_region}}"
+      filters:
+        instance-state-name: "{{ instance_state }}"
+#        group-name: ansible-sg
+    register: ec2
+
+  - name: remove old dns name
+    lineinfile:
+      path: /home/vagrant/scripts/playbooks/ansible/aws_kubernetes/hosts 
+      regexp: '^.*?\.compute.amazonaws\..*$'
+      state: absent
+
+  - name: add instance hosts file
+    lineinfile:
+      path: /home/vagrant/scripts/playbooks/ansible/aws_kubernetes/hosts
+      insertafter: '^\[aws\]'
+      line: "{{ item.public_dns_name }}"
+    with_items: "{{ ec2.instances }}"
+
+  - name: gather_facts
+    debug:
+      msg: "{{ item.public_dns_name }}"
+    with_items: "{{ ec2.instances }}"
+

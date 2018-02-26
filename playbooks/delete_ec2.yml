@@ -1,0 +1,32 @@
+# DELETE AWS EC2 instance
+---
+- hosts: localhost
+  connection: local
+  remote_user: vagrant
+  become: yes
+  gather_facts: false
+  vars:
+    instance_state: running
+  vars_files:
+  - files/awscreds.yml
+  tasks:
+  - name: gathering remote facts
+    ec2_remote_facts:
+      aws_access_key: "{{ aws_id }}"
+      aws_secret_key:  "{{ aws_key }}" 
+      region: "{{aws_region}}"
+      filters:
+        instance-state-name: "{{ instance_state }}"
+    register: ec2
+
+  - debug:
+      msg: "{{ ec2.instances }}"
+
+  - name: delete instance
+    ec2:
+      aws_access_key: "{{ aws_id }}"
+      aws_secret_key:  "{{ aws_key }}"
+      region: "{{aws_region}}" 
+      instance_ids: "{{ item.id }}"
+      state: absent
+    with_items: "{{ ec2.instances }}"
